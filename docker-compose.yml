@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  # OpenClaw 主服务
+  openclaw:
+    image: alpine/openclaw:${OPENCLAW_VERSION:-latest}
+    container_name: openclaw
+    restart: unless-stopped
+
+    volumes:
+      # 配置文件
+      - ./openclaw/config:/root/.openclaw
+      # 数据目录
+      - ./openclaw/data:/data
+      # 工作空间
+      - ./openclaw/workspace:/workspace
+
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # 网关配置
+      - OPENCLAW_GATEWAY_BIND=0.0.0.0:18789
+      - OPENCLAW_GATEWAY_AUTH_MODE=trusted-proxy
+      - OPENCLAW_GATEWAY_TRUSTED_PROXIES=["nginx"]
+      # Telegram 配置（可选）
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      # 模型配置
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+    networks:
+      - openclaw-net
+
+    healthcheck:
+      test: ["CMD", "openclaw", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Authelia 认证服务
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    restart: unless-stopped
+
+    volumes:
+      - ./authelia:/config
+
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+
+    networks:
+      - openclaw-net
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    depends_on:
+      - openclaw
+
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+
+    environment:
+      - DOMAIN=${DOMAIN}
+      - TZ=${TZ:-Asia/Shanghai}
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    networks:
+      - openclaw-net
+
+    depends_on:
+      - authelia
+      - openclaw
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Certbot SSL 证书管理
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    restart: "no"
+
+    volumes:
+      - ./ssl:/etc/letsencrypt
+      - ./certbot-webroot:/var/www/certbot
+
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+    networks:
+      - openclaw-net
+
+  # Watchtower 自动更新服务
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=${WATCHTOWER_INTERVAL:-86400}  # 默认每天检查一次
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_REVIVE_STOPPED=false
+      - WATCHTOWER_LABEL_ENABLE=true  # 只更新带标签的容器
+      - TZ=${TZ:-Asia/Shanghai}
+
+    networks:
+      - openclaw-net
+
+networks:
+  openclaw-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

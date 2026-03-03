@@ -1,0 +1,30 @@
+# Environment variables
+.env
+
+# Logs
+*.log
+logs/
+
+# Data directories
+openclaw/
+authelia/
+nginx/conf.d/*.conf
+ssl/
+backup/
+
+# Test directories
+test-deployment/
+
+# Credentials
+credentials.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

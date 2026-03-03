@@ -615,3 +615,42 @@ main() {
 
 # 运行主函数
 main "$@"
+
+# ============================================================================
+# 系统名称配置
+# ============================================================================
+
+configure_system_name() {
+    local choice=$(show_menu "系统名称" "请为您的 AI 助手系统命名：" \
+        "1" "使用默认名称（OpenClaw AI）" \
+        "2" "自定义名称")
+
+    case $choice in
+        1)
+            SYSTEM_NAME="OpenClaw AI"
+            ;;
+        2)
+            while true; do
+                SYSTEM_NAME=$(show_inputbox "自定义系统名称" "请输入系统名称（2-20个字符）：" "我的AI助手")
+
+                if [ -z "$SYSTEM_NAME" ]; then
+                    show_msgbox "错误" "系统名称不能为空"
+                    continue
+                fi
+
+                local length=${#SYSTEM_NAME}
+                if [ $length -lt 2 ] || [ $length -gt 20 ]; then
+                    show_msgbox "错误" "系统名称长度应在 2-20 个字符之间"
+                    continue
+                fi
+
+                break
+            done
+            ;;
+        *)
+            SYSTEM_NAME="OpenClaw AI"
+            ;;
+    esac
+
+    log_success "系统名称：$SYSTEM_NAME"
+}

@@ -615,6 +615,99 @@ configure_domain() {
 }
 
 # ============================================================================
+# 部署函数
+# ============================================================================
+
+deploy_openclaw() {
+    log_info "开始部署 OpenClaw..."
+
+    # 创建 .env 文件
+    {
+        echo "20"
+        cat > .env << EOF
+# OpenClaw 配置
+OPENCLAW_VERSION=latest
+
+# 域名配置
+DOMAIN=${DOMAIN:-localhost}
+
+# 管理员账号
+ADMIN_USERNAME=${USERNAME}
+ADMIN_PASSWORD=${PASSWORD}
+
+# 时区
+TZ=Asia/Shanghai
+EOF
+        echo "40"
+        sleep 1
+    } | show_gauge "创建配置" "正在创建配置文件..."
+
+    log_success "配置文件创建完成"
+
+    # 启动服务
+    {
+        echo "20"
+        docker compose pull 2>&1 | grep -v "^$" || true
+        echo "60"
+        docker compose up -d 2>&1 | grep -v "^$" || true
+        echo "100"
+    } | show_gauge "启动服务" "正在启动 Docker 容器..."
+
+    log_success "服务启动完成"
+
+    # 等待服务就绪
+    {
+        for i in {1..30}; do
+            if docker compose ps | grep -q "Up"; then
+                echo "100"
+                break
+            fi
+            echo $((i * 3))
+            sleep 1
+        done
+    } | show_gauge "等待服务" "等待服务启动..."
+
+    log_success "OpenClaw 部署完成！"
+}
+
+show_deployment_complete() {
+    local info="🎉 OpenClaw 部署完成！\n\n"
+    info+="访问地址：$ACCESS_URL\n"
+    info+="用户名：$USERNAME\n"
+    info+="密码：$PASSWORD\n\n"
+    info+="管理命令：\n"
+    info+="  查看状态：docker compose ps\n"
+    info+="  查看日志：docker compose logs -f\n"
+    info+="  停止服务：docker compose stop\n"
+    info+="  启动服务：docker compose start\n"
+    info+="  重启服务：docker compose restart\n\n"
+    info+="管理菜单：./manage.sh"
+
+    show_msgbox "部署完成" "$info"
+
+    # 保存访问信息
+    cat > /root/openclaw-access-info.txt << EOF
+OpenClaw 访问信息
+================
+
+访问地址：$ACCESS_URL
+用户名：$USERNAME
+密码：$PASSWORD
+
+部署时间：$(date '+%Y-%m-%d %H:%M:%S')
+部署目录：$(pwd)
+
+管理命令：
+  docker compose ps       # 查看状态
+  docker compose logs -f  # 查看日志
+  docker compose restart  # 重启服务
+  ./manage.sh            # 管理菜单
+EOF
+
+    log_success "访问信息已保存到：/root/openclaw-access-info.txt"
+}
+
+# ============================================================================
 # 主函数
 # ============================================================================
 
@@ -671,10 +764,13 @@ main() {
         exit 1
     fi
 
-    # 这里继续原来的部署流程...
+    # 开始部署
     log_success "准备开始部署..."
 
-    show_msgbox "部署" "部署功能正在完善中...\n\n当前版本已完成：\n✓ 完整的环境检查\n✓ 自动依赖安装\n✓ 防火墙配置\n✓ 端口检查\n\n请稍后使用完整版本"
+    deploy_openclaw
+
+    # 显示部署完成信息
+    show_deployment_complete
 }
 
 # 运行主函数
